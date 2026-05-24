@@ -1,223 +1,445 @@
-# Human-Centric System Design: The monday.com Agent Team
-### How specialized AI agents and engineering teams co-own work on monday.com
+# Enterprise Human-Agent Collaboration on monday.com
+### Modern, Tech-First System Design for Shared Workspaces (Software Engineering Domain)
 
 ---
 
-## 1. Executive Summary: The Core Concept
+## 1. Executive Summary: The Shared Workspace Paradigm
 
-Today's AI features on monday.com (like Sidekick, Magic, or Vibe) operate on a **request-and-response** model: *a user asks the AI to summarize a thread or write a formula, and the AI immediately replies.*
+Today's AI features on monday.com (such as Sidekick, Magic, or Vibe) operate on a **request-response** pattern: *a user asks the AI to summarize an update or generate a formula, and the AI returns a single result.* 
 
-This system design introduces **Hybrid Human-Agent Collaboration**. Instead of a single chatbot, we introduce a **team of specialized AI agents** that run in the background. They monitor your monday.com boards, coordinate tasks with each other, talk to external tools (like GitHub and CI/CD pipelines), and proactively nudge human team members at defined "approval gates."
+This design establishes the next frontier: **a workspace as a shared, event-driven environment where humans and specialized agents co-own work**. Agents actively monitor board state changes, coordinate tasks with each other, execute code sync operations via external developer tools (like GitHub and CI/CD pipelines), and proactively hand off decisions to humans at defined, high-risk approval gates.
 
-The monday.com workspace is no longer just a tracking tool for humans—it becomes a **shared, living environment** where humans and specialized AI agents co-own the engineering lifecycle.
+```mermaid
+flowchart TD
+    subgraph TODAY["1. Request-Response AI (Today)"]
+        U1[User] -->|Asks for formula / summary| SK[Sidekick / Magic / Vibe]
+        SK -->|Returns single answer| U1
+    end
+
+    subgraph NEXT["2. Co-Owned, Shared Workspace (This Design)"]
+        direction TB
+        WS[(monday Workspace: Boards, Items, Docs & Updates)]
+        H[Human Engineers & Managers] <-->|Co-Own & Modify| WS
+        AP[LangGraph Agent Pool] <-->|Event-Driven Listeners & Actions| WS
+        AP <-->|Interactive Approval Preview Cards| H
+    end
+
+    TODAY -.->|Evolutionary Shift| NEXT
+```
 
 ---
 
-## 2. The Concrete Technology Stack
+## 2. Concrete Technology Stack
 
-To turn this design into a reliable production system, we select a modern, enterprise-grade AI and engineering stack. We ground our architecture in these specific technologies:
+To turn this concept into a reliable, enterprise-ready system, we define a concrete, highly decoupled technology stack. We select modern tools specialized for high concurrency, robust state preservation, and cost-controlled language reasoning:
+
+```mermaid
+flowchart TB
+    subgraph INGEST["1. Event Ingestion & Routing"]
+        Web[monday Webhooks & MCP Events] -->|JSON Payload| FA[FastAPI Microservice]
+        FA -->|Extract & Normalize| Q[RabbitMQ Queue]
+        Q -->|Dequeue| RT[DeBERTa-v3-base Router]
+    end
+
+    subgraph BRAIN["2. Orchestration & LLMs"]
+        RT -->|Route Event| LG[LangGraph Core Framework]
+        LG -->|High-Reasoning Tasks| Claude[Claude 3.5 Sonnet]
+        LG -->|High-Frequency / Translation| Cohere[Cohere Command R+]
+        LG -->|Fast Summaries & Low-Level| GPT[GPT-4o-mini]
+    end
+
+    subgraph STATE["3. State & Vector Storage"]
+        LG <-->|Ephemeral Locks & Caching| Redis[(Redis Enterprise)]
+        LG <-->|Relational Metadata| PG[(Postgres DB)]
+        LG <-->|Embeddings & Learnings| PGV[(pgvector Database)]
+    end
+
+    subgraph EXEC["4. Safe Execution"]
+        LG -->|Propose JSON Mutation| PRE[Preview Service / UI Card]
+        PRE -->|Approved / Low-Risk| EXEC_SRV[Action Executor]
+        EXEC_SRV -->|Scoped Mutation| API[monday GraphQL API]
+    end
+```
+
+### 2.1 Language & Microservice Architecture
+* **Python 3.11 & FastAPI:** Houses the event ingestion pipeline. FastAPI is selected for its high-performance, asynchronous handling of concurrent webhooks under heavy load.
+
+### 2.2 Agent Orchestration
+* **LangGraph (by LangChain):** Our core agent state machine. Unlike simple linear pipelines, LangGraph supports stateful, cyclic graphs. This is essential for agents that must execute a task, check the result, hand it off to a peer agent, or loop back to correct an error based on system feedback.
+
+### 2.3 The Layered Language Model (LLM) Strategy
+Instead of sending every prompt to an expensive, high-latency model, we route tasks based on complexity and language:
+* **Claude 3.5 Sonnet (Anthropic):** Our primary reasoning engine. It evaluates complex pull request diffs, maps QA test results against unstructured Acceptance Criteria, and synthesizes release notes.
+* **GPT-4o-mini (OpenAI):** Our high-speed, sub-cent utility model. It classifies simple ticket updates, writes fast status sync changes, and generates non-technical titles from code branch names.
+* **Cohere Command R+:** Our localized multilingual specialist. Command R+ is natively optimized for 10 languages (including Hebrew and Arabic). It utilizes an advanced multilingual tokenizer that reduces token footprint by **50% to 70%** on Right-to-Left (RTL) scripts, cutting cost and latency in half.
+
+### 2.4 Caching, Database & Messaging Queue
+* **DeBERTa-v3-base:** A tiny, 86M-parameter encoder model running locally in a Docker container. It classifies and routes 95% of routine incoming board events in under **15 milliseconds** for a fraction of a cent.
+* **Redis Enterprise:** Serves as our distributed cache, locking workspace items during active agent mutations to prevent race conditions and managing fast-access user rosters.
+* **PostgreSQL with pgvector:** Our persistent store of record. The relational database tracks board configurations, permissions, and audit logs, while the `pgvector` extension performs semantic similarity searches to match user preferences and retrieve historical bug-fix precedents.
+* **RabbitMQ:** Implements backpressure and rate-shaping queues. If an event flood occurs, RabbitMQ buffers messages to ensure our agents never overwhelm monday's GraphQL API rate limits.
+
+---
+
+## 3. Team Composition & Human-Agent Collaboration
+
+We structure our agent pool around **five specialized developer personas**, mimicking a mature engineering organization. Each agent operates with clear, narrow tool boundaries:
+
+```mermaid
+flowchart TD
+    subgraph AT["Agent Pool & Board Topology"]
+        direction TB
+        IN[Inbox / Backlog Board] -->|Triage Agent| SPRINT[Sprint Board]
+        SPRINT <-->|Dev Liaison Agent| GH[GitHub via MCP]
+        SPRINT -->|Status: Ready for QA| QA[QA Board]
+        QA <-->|QA Gate Agent| CI[CI/CD via MCP]
+        QA -->|Passes Gate| REL[Releases Board]
+        REL -->|Release Agent| DOCS[monday Docs / Vibe]
+    end
+```
+
+### 3.1 The Five Specialized Agent Personas
+
+#### 3.1.1 Triage Agent (`agent_id: triage`)
+* **Metaphor:** The Intake Coordinator.
+* **Role:** Analyzes incoming bugs, feature requests, and customer tickets on the Backlog/Inbox board. Classifies severity, labels priority, and assigns the item to the best-suited team member.
+* **Tools:** `classify_item`, `find_best_assignee`, `move_item`, `request_clarification`.
+* **Escalation/Safety Trigger:** If an item contains key terms indicating a system outage (`P0`, `P1`, `down`, `breach`, `crash`), it halts automation, labels the item, and bypasses regular boards to page the on-call engineer.
+
+#### 3.1.2 Sprint Agent (`agent_id: sprint`)
+* **Metaphor:** The Agile Project Manager.
+* **Role:** Monitors active sprint health. Identifies stale or blocked tasks, flags team capacity issues, notes member Out-of-Office (OOO) statuses, and suggests sprint rebalancing.
+* **Tools:** `compute_sprint_health`, `propose_rebalance`, `flag_blocker`, `draft_sprint_summary`.
+* **Escalation/Safety Trigger:** The agent can write descriptive comments and flag items on the active board, but is **strictly forbidden** from dragging items across sprint boundaries without a manager's explicit click.
+
+#### 3.1.3 Dev Liaison Agent (`agent_id: dev_liaison`)
+* **Metaphor:** The Tech Lead Bridge.
+* **Role:** Acts as the bridge between monday.com and developer-specific environments. Connects via Model Context Protocol (MCP) to GitHub/GitLab. It captures commits and pull requests, automatically links them to the correct board cards, syncs column statuses, and summarizes code changes.
+* **Tools:** `sync_pr_status`, `summarize_pr_diff`, `link_commit_to_item`, `detect_stale_branches`.
+* **Escalation/Safety Trigger:** Operates purely as a read-write board synchronizer; it has no tool access to merge code branches, push commits, or close repositories.
+
+#### 3.1.4 QA Gate Agent (`agent_id: qa_gate`)
+* **Metaphor:** The Rigorous QA Tester.
+* **Role:** Enforces deployment quality standards. When an item is moved to "Ready for QA," this agent checks external CI pipelines (GitHub Actions, CircleCI) to ensure automated test suites passed. It then evaluates the ticket's Acceptance Criteria against the actual pull request code diff.
+* **Tools:** `check_acceptance_criteria`, `query_test_results`, `block_item`, `approve_item`, `escalate_test_failures`.
+* **Escalation/Safety Trigger:** If the item contains high-risk tags (`security`, `auth`, `payments`, `PII`), it blocks autonomous sign-off and escalates the ticket to a human QA Lead.
+
+#### 3.1.5 Release Agent (`agent_id: release`)
+* **Metaphor:** The Release Manager.
+* **Role:** Compiles release-ready items. It drafts non-technical, human-friendly changelogs inside monday Docs (using Vibe capabilities) and prepares release announcements for stakeholders.
+* **Tools:** `check_release_readiness`, `generate_changelog`, `notify_stakeholders`, `archive_release`.
+* **Escalation/Safety Trigger:** The release notes and Slack alerts remain draft-only until a human Product Manager reviews and clicks the interactive "Approve and Release" button.
+
+---
+
+## 4. End-to-End Pipeline Architecture
+
+This section details the physical flow of events, contexts, and actions from ingestion to secure execution.
+
+```mermaid
+flowchart TB
+    subgraph WS["monday.com Platform"]
+        EVT[Board / Item / Doc Event] -->|HTTPS Webhook| API_RECV[FastAPI Webhook Receiver]
+    end
+
+    subgraph FLOW["State & Execution Engine"]
+        API_RECV -->|Enqueue JSON| MQ[RabbitMQ Event Queue]
+        MQ -->|Dequeue Event| RT[DeBERTa Classifier Router]
+        
+        RT -->|triage_event| TR[Triage Agent]
+        RT -->|sprint_event| SP[Sprint Agent]
+        RT -->|mcp_event| DL[Dev Liaison Agent]
+        RT -->|qa_event| QA[QA Gate Agent]
+        RT -->|release_event| RL[Release Agent]
+        
+        TR & SP & DL & QA & RL <-->|Read / Write State| LG_STATE{LangGraph Cyclic State}
+        
+        LG_STATE <-->|Shared Context / Locks| REDIS[(Redis Cache)]
+        LG_STATE <-->|Roster / Rules| PG[(Postgres Relational DB)]
+        LG_STATE <-->|Memory / Preferences| VDB[(pgvector DB)]
+        
+        LG_STATE -->|Output JSON Proposed Action| M_GATE{Permission Gateway}
+    end
+
+    subgraph OUT["Secure Mutation & Delivery"]
+        M_GATE -->|High-Risk: Needs Approval| UI[Approval Card in monday UI]
+        UI -->|Approved| TB[Token Bucket Rate Limiter]
+        UI -->|Rejected / Adjusted| LEARN[Discard & Learn Processor]
+        LEARN -->|PII Sanitization| VDB
+        
+        M_GATE -->|Low-Risk: Autonomous| TB
+        TB -->|Rate Shaped Execution| EXEC[Action Executor]
+        EXEC -->|Secure GraphQL Mutation| WS
+        EXEC -->|Immutable Event Log| AUDIT[(Write-Once Audit DB)]
+    end
+```
+
+### 4.1 Event Envelope Structure
+Every event is normalized into a standard `WorkspaceEvent` schema before queue processing:
+
+```json
+{
+  "event_id": "8f3b2a1c-5d6e-4f7a-8b9c-0d1e2f3a4b5c",
+  "account_id": "tenant_9942",
+  "workspace_id": "ws_881",
+  "board_id": "board_sprint_active_2026",
+  "item_id": "item_10523",
+  "type": "status_changed",
+  "actor_type": "human",
+  "actor_id": "user_401",
+  "delta": {
+    "column_id": "status_7",
+    "old_value": "In Progress",
+    "new_value": "Ready for QA"
+  },
+  "timestamp": "2026-05-24T13:54:00Z"
+}
+```
+
+---
+
+## 5. Architectural Trade-offs (Ablation Matrix)
+
+Rather than claiming this architecture is universally perfect, we detail the core technical trade-offs isolated during the design process:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        THE TECHNOLOGY STACK                            │
-├───────────────────┬────────────────────────────────────────────────────┤
-│ Language & Core   │ Python 3.11 (optimized for asynchronous execution) │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Agent Framework   │ LangGraph (by LangChain)                           │
-│                   │ - Perfect for stateful, cyclic agent workflows     │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Ingestion API     │ FastAPI (Asynchronous Python microservices)        │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Core Brain (LLMs) │ - Claude 3.5 Sonnet (for complex reasoning)        │
-│                   │ - GPT-4o-mini (for fast, low-cost triage/summaries)│
-│                   │ - Cohere Command R+ (for native multilingual/RTL)  │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Router            │ DeBERTa-v3-base (Local small classifier)           │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Caching & State   │ Redis Enterprise (Fast, shared memory/locks)       │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Database          │ PostgreSQL with the pgvector extension              │
-│                   │ - Stores relational board data + embeddings        │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Message Queue     │ RabbitMQ (Handles rate limits & backpressure)      │
-├───────────────────┼────────────────────────────────────────────────────┤
-│ Infrastructure    │ AWS ECS (Fargate) + AWS KMS (Secret management)    │
-└───────────────────┴────────────────────────────────────────────────────┘
+│                        ARCHITECTURAL TRADEOFFS                         │
+├───────────────────┬───────────────────┬────────────────────────────────┤
+│ Chosen Path       │ Alternative Path  │ Trade-Off Isolated             │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ local DeBERTa-v3  │ LLM Router        │ - Latency & Cost vs. Semantic  │
+│ Router            │ (GPT-4o)          │   Flexibility on Novel Boards  │
+│                   │                   │ - Chosen for sub-15ms routing  │
+│                   │                   │   at $0.00 token overhead      │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Shared Board State│ Synchronous RPC   │ - Reliability & Isolation vs.   │
+│ + Event Metadata  │ between Agents    │   Lowest Latency Hand-offs     │
+│                   │                   │ - Board as Source of Truth     │
+│                   │                   │   prevents cascading outages   │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Isolated Action   │ Direct LLM API    │ - Platform Safety vs.          │
+│ Executor Queue    │ Mutations         │   Implementation Simplicity    │
+│                   │                   │ - Schema + Allowlist validation│
+│                   │                   │   stops hallucinated writes    │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ LangGraph Cloud   │ AWS Step          │ - AI-First Dev Speed vs.       │
+│ Container Nodes   │ Functions         │   Cloud-Native Ecosystem Lock  │
+│                   │                   │ - Allows quick deployment of   │
+│                   │                   │   complex cyclic Python loops  │
+└───────────────────┴───────────────────┴────────────────────────────────┘
 ```
 
-* **Python 3.11 & FastAPI:** Powers the asynchronous webhook receiver that swallows events from monday.com and external developer tools.
-* **LangGraph:** Our core framework for constructing the agents. Unlike simple linear pipelines, LangGraph supports cyclic loops and complex multi-agent state definitions, letting agents hand off tasks and double-check each other's work.
-* **The LLM Strategy:** We do not use one expensive model for everything.
-  * **Claude 3.5 Sonnet** is our heavy-lifter, used for high-risk reasoning like evaluating code readiness, comparing acceptance criteria, and drafting changelogs.
-  * **GPT-4o-mini** handles low-level, high-frequency, sub-cent tasks like summarizing pull requests, parsing titles, and reading simple update logs.
-  * **Cohere Command R+** is utilized for native multilingual and Right-to-Left (RTL) localization, significantly cutting down on token costs for non-English workspaces.
-* **DeBERTa-v3-base:** A tiny, highly specialized natural language processing (NLP) encoder running locally inside Docker containers. It classifies and routes incoming events in milliseconds for a fraction of a cent.
-* **PostgreSQL + pgvector:** Our database of record. It stores workspace configuration tables, and the `pgvector` extension allows us to perform semantic vector searches for things like retrieving contextually similar past tasks or tracking user preferences.
-* **Redis Enterprise:** Provides sub-millisecond in-memory caching. It tracks active sprints, user lists, and locks item records while an agent is modifying them to prevent write conflicts.
-* **RabbitMQ:** Acts as the traffic cop. It queues incoming webhooks and controls the rate of outbound mutations to respect monday.com API limits.
+* **Routing Decision:** Standard LLM routers add **$2.0\text{s} - 3.5\text{s}$ of latency** per webhook. Since 95% of routes map to defined enumerations, **DeBERTa-v3-base** provides high precision at near-zero execution costs and instantly filters out background noise.
+* **Agent Coupling:** Synchronous RPC coupling creates single points of failure. If the QA Agent suffers an API timeout, it would lock up the Triage thread. By using **Shared Board State + Metadata JSON**, agents run completely independently. If an agent crashes, the board remains intact, and the event is retried on RabbitMQ.
 
 ---
 
-## 3. Meet the Agent Team (Relatable Roles)
+## 6. Solving Critical Engineering Bottlenecks
 
-To build an efficient team, we partition responsibilities among **five specialized agents**, mirroring a mature software development organization:
+### 6.1 Bottleneck 1: API Rate Limit Starvation (The Token Bucket Limiter)
+monday.com's GraphQL API enforces strict query complexity rate limits. Multiple independent agents writing status updates, comments, and summaries concurrently will rapidly trigger `429 Too Many Requests` errors, resulting in dropped events.
+* **The Solution:** The **Action Executor** runs a distributed **Token Bucket algorithm** in Python, tracking available platform capacity per `account_id` in Redis.
+* **Dual-Queue Prioritization:** Writes are divided into two priority lanes:
+  1. **High-Priority Lane:** Critical QA blocks, P0 outages, and human approval alerts bypass rate-limiting queues.
+  2. **Standard-Priority Lane:** Status syncs, branches updates, and internal summaries are held in **RabbitMQ buffers**. If a tenant's token depth falls below 15%, standard writes are gracefully rate-shaped and trickled out as token balances refill.
 
+### 6.2 Bottleneck 2: Concurrency & Database Conflicts (Avoiding "Stepped-on Toes")
+If the *Dev Liaison Agent* updates an item with a pull request summary at the same millisecond the *Sprint Agent* attempts to flag it as "stale," they can overwrite each other's data, causing write drift.
+* **The Solution:** We establish a **Distributed Lock + Optimistic Locking protocol** via Redis and our Postgres relational schema.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant DL as Dev Liaison Agent
+    participant SP as Sprint Agent
+    participant Redis as Redis Enterprise
+    participant DB as Postgres DB
+    
+    DL->>Redis: SETNX lock:item_10523 (expires 5s)
+    Redis-->>DL: OK (Lock acquired)
+    SP->>Redis: SETNX lock:item_10523 (expires 5s)
+    Redis-->>SP: FAIL (Item locked)
+    
+    Note over SP: Sprint Agent back-offs<br/>& queues event for 250ms
+    
+    DL->>DB: Read item_10523 (version_id = 42)
+    DL->>DL: Plan summary update
+    DL->>DB: UPDATE item_10523 SET status="In Progress", version_id = 43 WHERE version_id = 42
+    DB-->>DL: Success (1 row updated)
+    DL->>Redis: DEL lock:item_10523
+    
+    SP->>Redis: SETNX lock:item_10523 (expires 5s)
+    Redis-->>SP: OK (Lock acquired)
+    SP->>DB: Read item_10523 (version_id = 43)
+    SP->>SP: Re-evaluates plan with new state
+    SP->>DB: UPDATE item_10523 SET flags="stale", version_id = 44 WHERE version_id = 43
+    SP->>Redis: DEL lock:item_10523
 ```
-             ┌─────────────────────────┐
-             │ Incoming Workspace Event│
-             └────────────┬────────────┘
-                          │
-                 ┌────────┴────────┐
-                 │ DeBERTa Router  │
-                 └────────┬────────┘
-                          │
-         ┌────────────────┼────────────────┬────────────────┐
-         ▼                ▼                ▼                ▼
-   ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐
-   │  Triage   │    │  Sprint   │    │Dev Liaison│    │  QA Gate  │
-   │  Agent    │    │  Agent    │    │   Agent   │    │   Agent   │
-   └─────┬─────┘    └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
-         │                │                │                │
-         └────────────────┼────────────────┴────────────────┘
-                          ▼
-                    ┌───────────┐
-                    │  Release  │
-                    │  Agent    │
-                    └───────────┘
-```
 
-### 3.1 The Triage Agent (`triage`)
-* **Metaphor:** The Intake Coordinator.
-* **Job:** Sits at the front desk. When a new bug, feature request, or ticket lands in the Backlog/Inbox board, this agent reads it, classifies its priority, estimates its impact, and routes it to the correct board and engineer.
-* **Safety Rail:** If it detects a major system outage (P0/P1), it halts autonomous routing, bypasses regular boards, and immediately pages the on-call engineer.
+### 6.3 Bottleneck 3: Credential Leakage in Multi-Tenant Environments
+Agents must access customer GitHub or GitLab repositories. Storing customer API keys or OAuth tokens in a shared database introduces severe risk vectors.
+* **The Solution:** We implement a **Zero-Storage Credential Architecture**. We never store customer keys in our database.
+* **Implementation:** Credentials reside inside monday.com's native **Secure App Storage**. When the *Dev Liaison Agent* needs to call GitHub via MCP, it requests a short-lived token using the tenant's cryptographically signed active session payload. The token is fetched in-memory, consumed purely inside the secure container, and immediately scrubbed from RAM upon connection termination.
 
-### 3.2 The Sprint Agent (`sprint`)
-* **Metaphor:** The Project Manager.
-* **Job:** Monitors the overall health of the current sprint. It watches team capacity, flags tickets that are dragging on too long (stale items), detects when a team member is Out-of-Office, and proposes rebalancing tasks.
-* **Safety Rail:** It can flag items on the board, but it is **never** allowed to move tasks across sprint boundaries without a manager's direct click.
-
-### 3.3 The Dev Liaison Agent (`dev_liaison`)
-* **Metaphor:** The Tech Lead Bridge.
-* **Job:** Syncs the monday.com board with actual code activity. It connects via secure MCP (Model Context Protocol) to GitHub or GitLab. When a developer opens a Pull Request or pushes code, it automatically updates the monday.com item status, links the commit, and summarizes the code changes in plain English.
-* **Safety Rail:** It operates purely as a visual synchronizer; it cannot merge code or close issues autonomously.
-
-### 3.4 The QA Gate Agent (`qa_gate`)
-* **Metaphor:** The Rigorous Tester.
-* **Job:** Enforces quality gates. When an engineer moves a task to "Ready for QA," this agent checks the linked CI/CD system (like GitHub Actions or CircleCI) to ensure automated test suites passed. It then reads the task's original "Acceptance Criteria" from monday.com and verifies that the pull request contains matching logic.
-* **Safety Rail:** If the task touches critical areas (like `security`, `payments`, or `PII`), it blocks autonomous sign-off and demands a senior human QA lead's signature.
-
-### 3.5 The Release Agent (`release`)
-* **Metaphor:** The Release Manager.
-* **Job:** Coordinates the final push. It aggregates all items marked "QA Approved," checks release readiness, generates clean, user-friendly markdown release notes/changelogs using monday's Vibe Doc capability, and prepares announcements.
-* **Safety Rail:** It drafts the changelog and prepares the Slack announcement, but a human must click "Approve and Release" before any external communication is sent.
+### 6.4 Bottleneck 4: Multi-Language & RTL Token Inflation
+In non-English (RTL) regions, standard tokenizers break text down into inefficient byte fragments. This inflates prompts up to **300% to 400%**, dramatically increasing execution cost, prompt latency, and exceeding LLM context limits.
+* **The Solution:**
+  1. **Unicode NFC Normalization:** Standardizes multi-byte scripts before calculating token weights.
+  2. **Model Swapping:** For Hebrew or Arabic-dominant workspaces, we swap out standard models for **Cohere Command R+**, which leverages a custom multilingual vocabulary designed to represent RTL characters natively and efficiently.
+  3. **Context Reduction:** During retrieval operations, we dynamically scale down the RAG snippet depth (`top-k` values) for inflated locales to guarantee we remain within our target cost window ($\le \$0.15$ per RTL item).
 
 ---
 
-## 4. The Lifecycle of a Task (A Human Story)
+## 7. Context Layering Strategy
 
-To understand how this system actually works, let’s follow a single bug report through its lifecycle:
+To keep execution costs predictable and prevent prompt drift, we strictly separate persistent global knowledge from ephemeral session memory:
 
 ```
-[1] User reports bug in Inbox
-      │
-      ▼
-[2] Triage Agent routes & assigns to Engineer (GPT-4o-mini)
-      │
-      ▼
-[3] Engineer opens GitHub PR ──► Dev Liaison Agent syncs status & adds summary (GPT-4o-mini)
-      │
-      ▼
-[4] QA Gate Agent verifies CI tests pass & checks Acceptance Criteria (Claude 3.5 Sonnet)
-      │
-      ▼
-[5] Release Agent aggregates bug-fix & drafts user changelog in monday Docs (Claude 3.5 Sonnet)
-      │
-      ▼
-[6] Product Manager approves ──► Release Agent publishes & archives
+┌────────────────────────────────────────────────────────────────────────┐
+│                        CONTEXT LAYERING DESIGN                         │
+├───────────────────┬───────────────────┬────────────────────────────────┤
+│ Layer Scope       │ Storage Engine    │ Contents                       │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Workspace-Level   │ Redis Enterprise  │ - Column mappings & schemas    │
+│ (Shared Global)   │ (Active Cache)    │ - Active Sprint capacities     │
+│                   │                   │ - Active user loads & rosters  │
+│                   │                   │ - Immutable permission matrix  │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Session-Level     │ LangGraph State   │ - Focused item ID details      │
+│ (Ephemeral Agent) │ Memory (RAM)      │ - Retrained semantic snippets  │
+│                   │                   │ - Local scratchpad (Chain of   │
+│                   │                   │   Thought reasoning strings)   │
+│                   │                   │ - Relevant 'failed_proposals'  │
+└───────────────────┴───────────────────┴────────────────────────────────┘
 ```
-
-1. **Intake:** A customer submits a ticket: *"Payment screen crashes when clicking checkout on iOS in Hebrew."*
-2. **Triage:** The **Triage Agent** picks up the event. It uses **GPT-4o-mini** to analyze the text. It detects that the bug is localized (Hebrew) and targets the payment flow. Because "payment" is a high-sensitivity category, it labels it as `High Priority`, moves it from the Inbox board to the Active Sprint board, and assigns it to "Sarah," the lead iOS payment engineer.
-3. **Development:** Sarah opens a branch in GitHub and begins working. When she opens a Pull Request, the **Dev Liaison Agent** receives a webhook, links the PR directly to the monday.com item, translates the technical git diff into a simple, non-technical status update, and moves the board column to "In Progress."
-4. **Testing Gate:** Once Sarah fixes the bug, she changes the status to "Ready for QA." The **QA Gate Agent** steps in. It queries GitHub Actions via MCP and verifies that Sarah's unit tests passed. It uses **Claude 3.5 Sonnet** to read the ticket's Acceptance Criteria and compares it against the PR diff to ensure the Hebrew localization bug was specifically addressed. Since it's a "payment" item, it flags a QA Lead for final sign-off.
-5. **Changelog Prep:** Once approved, the ticket is marked "Ready to Release." As the release window approaches, the **Release Agent** scans the board, aggregates Sarah's ticket with other completed work, and drafts an elegant, customer-facing changelog inside a **monday Doc**.
-6. **The Hand-off:** The Product Manager receives a notification with a simple preview card showing the draft changelog. She clicks "Approve." The Release Agent archives the completed tasks, posts the release notes, and updates the customer.
 
 ---
 
-## 5. Solving the Hard Technical Problems
+## 8. Continuous Optimization: The "Discard & Learn" Loop
 
-In an enterprise environment, simple LLM scripts fail quickly. Here is how our technology stack solves the hardest production hurdles:
+When a Product Manager rejects a release changelog or adjusts an agent's sprint assignment, our system must dynamically adapt to prevent repeating the error. We build a specialized, tenant-isolated vector feedback loop inside **pgvector**:
 
-### 5.1 API Rate Limits (The Token Bucket Guard)
-monday.com's GraphQL API strictly limits how many operations can be performed per minute. If five agents start updating dozens of board items simultaneously, they will crash into rate limits, dropping events.
-* **Our Solution (RabbitMQ + Token Bucket):** All agent mutations (writes to monday.com) are routed through a centralized **Action Executor** service. This service runs a **Token Bucket algorithm** in Python, tracking available API capacity per tenant account. 
-* High-priority updates (like QA blocks or P0 alerts) bypass the queue. Regular status updates and summaries are held in a **RabbitMQ queue** and trickled out smoothly as the token bucket refills, ensuring 100% delivery without ever triggering a `Rate Limit Exceeded` error.
-
-### 5.2 Multi-Language and RTL Token Inflation
-Standard LLM tokenizers split text into small sub-word chunks. While English words usually map to a single token, Right-to-Left (RTL) scripts like Hebrew or Arabic are split into many more sub-word fragments. A single sentence in Hebrew can consume **3 to 4 times more tokens** than English, causing API costs to skyrocket and exceeding context window lengths.
-* **Our Solution (Cohere Command R+ & Dynamic Context):** For Hebrew and Arabic workspaces, our system swaps out standard models for **Cohere Command R+** (specifically optimized for non-English performance and translation). 
-* Additionally, we run a text-preprocessing step using **Unicode NFC normalization**. When querying our **pgvector database** for context, we dynamically reduce the retrieve limit (`top-k` snippets) for RTL locales, keeping prompts tight, fast, and within a predictable budget (scaling up to **$0.15/item** dynamically only when necessary).
-
-### 5.3 Keeping Customer Code and Credentials Safe
-Agents need access to systems like GitHub, GitLab, and Jira. In a multi-tenant cloud application, storing customer credentials globally is a security nightmare.
-* **Our Solution (monday Secure App Storage):** We never store integration secrets in our own application database. Instead, we leverage monday.com's native **Secure App Storage**. 
-* When our MCP adapters need to pull GitHub data for a tenant, they fetch the short-lived, encrypted OAuth token dynamically using the user's active session signature. The secret is held purely in-memory in Python and immediately discarded after the API call completes, ensuring absolute tenant isolation.
-
-### 5.4 How the Agents Learn from Human Rejections (Discard & Learn)
-If a Product Manager rejects a release changelog or overrides a triage assignment, the agent must not repeat that mistake.
-* **Our Solution (pgvector Feedback Loops):** When a human rejects or modifies an agent's proposal at an approval gate, the system triggers our **Discard & Learn loop**:
-
+```mermaid
+flowchart TD
+    A[Product Manager Rejects or Edits Proposal] -->|Trigger Hook| B[Extract Context & User Mutation]
+    B --> C[PII Sanitization Service: strips names, emails, keys]
+    C -->|Generate Embedding| D[Write to Tenant-Isolated pgvector Namespace]
+    
+    subgraph NEXT_RUN["Subsequent Agent Planning Run"]
+        E[Agent Receives New Event] -->|Vector Similarity Query| F{Distance < 0.15 to Past Failure?}
+        F -->|Yes| G[Inject Negative Few-Shot Prompt]
+        G -->|Example: 'DO NOT draft notes in format X. Instead, use Y'| H[Generate Correct Proposal]
+        F -->|No| I[Standard Prompt Generation]
+        I --> H
+    end
 ```
-[1] Human rejects/modifies agent suggestion
-      │
-      ▼
-[2] System strips all PII (names, emails)
-      │
-      ▼
-[3] Failed scenario + correction stored in pgvector database
-      │
-      ▼
-[4] Future tasks query pgvector: "Have I failed at this before?"
-      │
-      ▼
-[5] Inject correction as a negative few-shot prompt: "DO NOT do X; instead do Y"
-```
-
-* This memory database is isolated per customer workspace, meaning agents learn the unique nuances, vocabularies, and preferences of individual teams over time without mixing any cross-tenant data.
 
 ---
 
-## 6. Business Success & Production Posture
+## 9. Evaluation Staging & Staged Deployment
 
-### 6.1 Success KPIs
-We measure success through simple, high-impact business metrics rather than just technical ML stats:
+To guarantee that agent behaviors are fully calibrated and safe, the team undergoes a rigorous, four-phase deployment pipeline.
 
-* **Cycle Time (P50/P90):** We target a **≥20% reduction** in the time it takes for an item to go from Backlog to Released.
-* **Human Attention Cost:** We aim to reduce coordination time to **≤4 minutes per task** (from a baseline of 12-15 minutes).
-* **Escape Rate:** Defects that bypass the QA Gate Agent to production must remain **under 3%**.
+```mermaid
+flowchart LR
+    P1[Phase 1: Offline] -->|Passes Ground Truth| P2[Phase 2: Shadow]
+    P2 -->|Escape Rate < 5%| P3[Phase 3: Canary]
+    P3 -->|KPI Targets Met| P4[Phase 4: Online]
+    
+    P1 -.->|Fails Metrics| H1[Halt & Re-evaluate]
+    P2 -.->|P0 Miss / Error| H2[Halt & Patch]
+    P3 -.->|KPI Regression| H3[Rollback to Shadow]
+```
 
-### 6.2 Pre-User Complaint Alerting
-Instead of waiting for customers to complain, our Python microservices stream telemetry directly to dashboards. We watch a primary metric: **The Escape Rate**. 
-* If our telemetry detects that users are reverting/undoing agent actions or overriding suggestions more than **5% of the time in a 6-hour window**, our system triggers a high-priority on-call alert and automatically drops the workspace's autonomy level back to `suggestion_only` mode.
+### 9.1 Phase 1: Offline Validation (Weeks 1–4)
+* **Goal:** Evaluate agents in isolation against historic team records.
+* **Corpus Construction:** Anonymize 6 months of historical board updates, PRs, and sprint shifts to construct a golden ground-truth evaluation set.
+* **Ground-Truth Rigor:** Three senior software leads independently rate agent actions on a 4-point scale: `[Correct, Acceptable, Suboptimal, Wrong]`. We target an inter-annotator agreement rating of **Cohen's $\kappa > 0.75$**.
+* **Model-as-a-Judge Calibration:** For qualitative outputs (e.g., Release Agent changelogs), we calibrate our evaluator LLM against 200 human-graded summaries, demanding a **Spearman Rank Correlation Coefficient ($\rho \ge 0.80$)**.
+
+### 9.2 Phase 2: Shadow Dry-Run (Weeks 5–10)
+* **Goal:** Evaluate the agents on live events without risking workspace contamination.
+* **Execution:** Agents capture active webhooks and process plans in the background. The proposed mutations are written to a shadow log database rather than executed via the monday API.
+* **Success Criteria:** Shadow execution must run for 30 consecutive days with **zero severity-0 triage misses** and an implied **escape rate of < 5%**.
+
+### 9.3 Phase 3: Canary Trial (Weeks 11–14)
+* **Goal:** Launch live execution to a small user base.
+* **Execution:** Turn on the *Triage* and *Dev Liaison* agents for **5% to 25%** of opt-in customer workspaces. All writes remain gated behind interactive **Preview Cards** in the monday UI.
+* **Fallback trigger:** If any metric regresses or a tenant hits API rate starvation, the workspace is automatically rolled back to Phase 2.
+
+### 9.4 Phase 4: Full Online Autonomy (Weeks 15+)
+* **Goal:** Scale system to 100% of target workspaces.
+* **Execution:** Enable full autonomy. High-risk writes (external changelogs, payments/security QA sign-offs) remain gated behind human approvals. Low-risk updates (PR linking, status updates, capacity flags) write autonomously.
 
 ---
 
-## 7. Concrete MVP Roadmap
+## 10. System Failures & Production Posture
 
-To build trust and validate safety, we roll the agent team out in three logical phases:
+### 10.1 Self-Rejection Failure Criteria
+The deployment must be immediately aborted or reverted if any of the following self-rejection limits are hit in production:
 
 ```
-Phase 1: Observation (Wk 1-10) ──► Phase 2: Assisted (Wk 11-14) ──► Phase 3: Autonomous (Wk 15+)
-  - Agents run in dry-run        - Low-risk status updates live   - High-risk gates unlocked
-  - Verify triage routes         - Human approves rebalances      - Self-improving feedback loop
-  - Calibrate LLM judges         - Rate limiters validated        - Scale to 100% of workspaces
+┌────────────────────────────────────────────────────────────────────────┐
+│                        PRODUCTION ALERTS & ACTIONS                     │
+├───────────────────┬───────────────────┬────────────────────────────────┤
+│ Metric Monitored  │ Critical Limit    │ Automated System Response      │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Escape Rate       │ > 5% over 6 hours │ - Immediately page on-call     │
+│ (Primary Alert)   │                   │ - Revert workspace autonomy    │
+│                   │                   │   tier to suggestion-only      │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Human Override    │ > 40% over 24 hrs │ - Pause the offending agent    │
+│ Rate              │                   │ - Route all its actions back   │
+│                   │                   │   to preview card approvals    │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Rate Limit        │ > 15% queue       │ - Drop standard status writes  │
+│ Starvation Rate   │ drops             │ - Buffer non-critical traffic  │
+│                   │                   │   in RabbitMQ backpressure     │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Token Cost Drift  │ > 3x baseline     │ - Trigger context audit        │
+│                   │                   │ - Limit top-k retrieval depth  │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Injection Guard   │ > 0 violations    │ - Trigger Sev-2 Incident Alert  │
+│                   │                   │ - Hard-block the execution port│
+└───────────────────┴───────────────────┴────────────────────────────────┘
 ```
 
-1. **Phase 1: Observation (Weeks 1–10):** The Triage, Dev Liaison, and Sprint agents run in "dry-run" shadow mode. They observe the boards and generate proposals in the database, but do not write back to monday.com. We compare their planned actions against actual human actions to verify accuracy.
-2. **Phase 2: Assisted Action (Weeks 11–14):** We turn on live integrations for low-risk tasks. The Dev Liaison syncs status changes, while the Sprint and Triage agents suggest rebalances and assignments via **interactive Preview Cards** in the monday UI.
-3. **Phase 3: Gated Autonomy (Weeks 15+):** Once the workspace achieves a $70\%$ approval acceptance rate over 14 days, the workspace can opt-in to autonomous writes. Even in full autonomy, high-risk gates (such as signing off on security tasks or publishing external changelogs) remain strictly locked behind human approval.
+### 10.2 Pre-User Complaint Detection Strategy
+To detect failures before users submit support tickets:
+* **Revert Monitoring:** We track the exact usage of the "Revert / Undo" button on agent mutations. A localized spike of reverts on a specific board triggers an instant, automated fallback to suggestion-only mode for that tenant.
+* **LLM Judge Drift Telemetry:** Our offline evaluation judge continuously evaluates production outputs. If the judge's rating distributions diverge from our calibrated baseline mean by **$> 0.15$**, it indicates output drift, triggering an alert to our engineering team.
 
 ---
 
-*This reader-friendly system design details a production-ready, highly secure, and cost-controlled agentic architecture, grounded in LangGraph, PostgreSQL/pgvector, and Redis, custom-tailored for the monday.com ecosystem.*
+## 11. MVP Implementation Gantt Timeline
+
+We layout a highly calibrated MVP roadmap to ensure validation and trust are developed continuously:
+
+```mermaid
+gantt
+    title MVP System Rollout (2026)
+    dateFormat YYYY-MM-DD
+    axisFormat %b %d
+
+    section Phase 1: Core Engine & Offline
+    Setup Event Ingestion (FastAPI + RabbitMQ)  :active, des1, 2026-01-01, 20d
+    Deploy DeBERTa Router & Core LangGraph       :active, des2, after des1, 20d
+    Historical Replay & Ground-Truth Eval       :des3, after des2, 20d
+
+    section Phase 2: Shadow & Integrations
+    Shadow Mode Live (Dry-Run Mutations)         :sh1, after des3, 30d
+    Secure MCP Adapters (GitHub/CI Isolation)    :sh2, after des3, 20d
+    Incorporate "Discard & Learn" pgvector Loop  :sh3, after sh2, 15d
+
+    section Phase 3: Canary & Gated writes
+    Canary Release (5% Workspaces - suggestion)   :can1, after sh1, 25d
+    Calibrate Rate Limiters & Token Buckets      :can2, after sh1, 15d
+
+    section Phase 4: Full Autonomy
+    Gradual Autonomy Rollout (100% Workspaces)   :online, after can1, 30d
+```
+
+---
+
+*This production blueprint details a complete, stateful, and highly secure human-agent system design, optimized with distributed queuing, robust concurrency controls, cost-contained multilingual handling, and autonomous learning loops, tailored specifically for the monday.com ecosystem.*
