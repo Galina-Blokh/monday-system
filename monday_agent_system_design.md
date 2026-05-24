@@ -382,4 +382,39 @@ While this system design provides a highly robust blueprint, deploying an event-
 
 ---
 
+## 13. Calibrated Extensions (Future Scope)
+
+To maintain a tightly calibrated and validated MVP delivery timeline, we have intentionally categorized several high-value capabilities as "Out of Scope" for our initial deployment. This section maps out these future extensions, outlining their development cost and projected business value:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     FUTURE CALIBRATED EXTENSIONS                       │
+├───────────────────┬───────────────────┬────────────────────────────────┤
+│ Extension Name    │ Estimated Effort  │ Projected Business Value       │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Cross-Workspace   │ 3 Weeks of        │ High (Unlocks portfolio-level  │
+│ Portfolio Agent   │ Engineering Time  │ tracking for enterprise PMOs;  │
+│                   │                   │ estimated to drive +5% seat    │
+│                   │                   │ expansion in enterprise)       │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Learned Event     │ 2 Weeks of        │ Low until board heterogeneity   │
+│ Router            │ Engineering Time  │ is extremely high; DeBERTa-v3  │
+│                   │                   │ remains sufficient for MVP     │
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ On-Device Small   │ 4 Weeks of        │ Medium (Reduces Triage API     │
+│ Model (SLM) for   │ Engineering Time  │ token cost by an estimated 30% │
+│ Local Triage      │                   │ by running classification locally)│
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│ Full Bidirectional│ 6 Weeks of        │ High UX impact; allows users to │
+│ Plan Mode (Side-  │ Engineering Time  │ interactively review and edit  │
+│ kick Integration) │                   │ agent multi-step plans in chat │
+└───────────────────┴───────────────────┴────────────────────────────────┘
+```
+
+* **Cross-Workspace Portfolio Agent:** Extends the team's capabilities from a single board to tracking cross-board deliverables across multiple team workspaces. This is a massive feature for Portfolio Management Offices (PMOs) but is deferred to limit initial state synchronization complexity.
+* **On-Device Small Model (SLM) for Triage:** Swaps DeBERTa-v3-base out for an on-device quantized SLM (like Microsoft Phi-3 or Llama-3-8B-Instruct running inside local workspace containers). This would allow local reasoning and basic prompt-parsing before any cloud network jumps, drastically protecting customer data privacy.
+* **Full Bidirectional Plan Mode:** Integrates the background agent pool directly with monday's chat Sidekick. It would allow users to ask Sidekick: *"Show me the Sprint Agent's rebalance plan,"* and interactively toggle or drag-and-drop tasks directly inside the chat pane before approving. This is deferred due to the significant visual UI development overhead.
+
+---
+
 *This clear, human-readable system design establishes a production-ready, highly secure, and cost-controlled agentic architecture, grounded in LangGraph, PostgreSQL/pgvector, and Redis, custom-tailored for the monday.com ecosystem.*
