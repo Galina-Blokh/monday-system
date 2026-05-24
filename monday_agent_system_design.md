@@ -3,8 +3,9 @@
 
 ---
 
-## 1. Executive Summary: The Shared Workspace Paradigm
+## 0. Problem & Product Positioning
 
+### 0.1 The Shift: Request-Response to Shared Workspaces
 Today's AI features on monday.com (such as Sidekick, Magic, or Vibe) operate on a **request-response** pattern: *a user asks the AI to summarize an update or generate a formula, and the AI returns a single result.* 
 
 This design establishes the next frontier: **a workspace as a shared, event-driven environment where humans and specialized agents co-own work**. Agents actively monitor board state changes, coordinate tasks with each other, execute code sync operations via external developer tools (like GitHub and CI/CD pipelines), and proactively hand off decisions to humans at defined, high-risk approval gates.
@@ -26,6 +27,63 @@ flowchart TD
 
     TODAY -.->|Evolutionary Shift| NEXT
 ```
+
+| Capability | Role in this design |
+|---|---|
+| **Sidekick** | User-initiated Q&A; does not replace event-driven agents |
+| **monday agents (builder)** | Hosts agent definitions; our team registers the five agents below |
+| **Magic** | Field-level assist (summaries, formulas); agents call Magic skills where cheaper than raw LLM |
+| **Vibe** | Doc/knowledge authoring; Release Agent drafts changelogs into Docs via Vibe |
+| **MCP** | External tools (GitHub, CI, Slack) connect through MCP adapters; Dev Liaison and QA Gate consume them |
+
+### 0.2 User Pain & Impact
+Engineering managers spend ~30% of coordination time on status chasing, sprint rebalancing, and release prep — data already in monday boards, docs, and updates but not synthesized. **Impact:** reclaim manager hours, shorten cycle time, reduce escape defects to production.
+
+---
+
+## 1. Success Definition (Metric-First Framing)
+
+> Define what success looks like, for an individual agent and for the team, before proposing how to build it. Include a cost dimension alongside quality.
+
+### 1.1 Per-Agent Success (Quality + Cost)
+
+| Agent | Primary Quality Metric | Target | Failure (Reject Design) | Cost Cap / Item |
+|---|---|---|---|---|
+| **Triage** | Routing precision@1 | ≥0.88 | <0.75 offline | ≤$0.02 |
+| **Triage** | P0/P1 severity recall | ≥0.98 | Any miss in shadow | (included) |
+| **Sprint** | Proposal acceptance rate | ≥0.70 | <0.45 sustained 14d | ≤$0.03 |
+| **Dev Liaison** | PR ↔ item sync accuracy | ≥0.97 | <0.90 | ≤$0.01 |
+| **QA Gate** | Gate precision (block bad) | ≥0.95 | False-pass on auth/PII | ≤$0.01 |
+| **QA Gate** | False block rate | <0.08 | >0.20 | (included) |
+| **Release** | Changelog human score (1–5) | ≥4.0 | <3.2 | ≤$0.08 |
+
+**Blended team cost target:** ≤ **$0.05 / item processed** (all agents combined) for standard English workspaces.
+
+#### 1.1.1 Multilingual Token Inflation Adjustment
+Non-English and RTL scripts (e.g., Hebrew, Arabic, Japanese) experience **tokenizer inflation** (up to 3x–4x tokens per word) under standard GPT/Llama tokenizers. 
+* **Dynamic Budget Scaling:** For non-English workspaces, the blended cost cap is scaled dynamically up to **≤ $0.15 / item**.
+* **Mitigation:** The system defaults to token-efficient multilingual models (e.g., Cohere Command R, GPT-4o-mini) and dynamically restricts context extraction (smaller `top-k` semantic snippets) on non-Latin locales to protect cost/perf boundaries.
+
+### 1.2 Team-Level Success (Quality + Cost)
+
+| KPI | Target | Failure Threshold | Detect Before User Complaint |
+|---|---|---|---|
+| **Cycle time reduction** (P50 item age) | ≥20% vs baseline | <5% at 60d | Cohort dashboard weekly |
+| **Human attention cost** | ≤4 min / item | >12 min | Session + approval latency |
+| **Autonomy rate** | ≥65% items no human touch | <30% | Approval queue depth |
+| **Escape rate** | <3% | >8% for 7d | Revert events + override rate |
+| **Agent-induced Sev-1** | 0 / month | Any | Incident tag `agent_actor` |
+| **Net-negative workspaces** | <5% of fleet | >15% | Escape + override + NPS dip |
+
+### 1.3 Failure Criteria (Self-Rejection Thresholds)
+
+| # | Condition | Detection | Response |
+|---|---|---|---|
+| **F1** | Escape rate >8% for 7d | `agent_action_reverted` events | Drop autonomy tier fleet-wide |
+| **F2** | Permission violation in shadow | Gateway audit log | Hard block launch |
+| **F3** | Sprint override rate >50% | `human_override` on Sprint Agent | Suggestion-only for Sprint |
+| **F4** | Token cost super-linear in board size | Cost vs `item_count` regression | Fix retrieval; cap context |
+| **F5** | P0/P1 triage miss in shadow | Labeled incident replay | No online until root-caused |
 
 ---
 
@@ -102,32 +160,37 @@ flowchart TD
 
 #### 3.1.1 Triage Agent (`agent_id: triage`)
 * **Metaphor:** The Intake Coordinator.
-* **Role:** Analyzes incoming bugs, feature requests, and customer tickets on the Backlog/Inbox board. Classifies severity, labels priority, and assigns the item to the best-suited team member.
-* **Tools:** `classify_item`, `find_best_assignee`, `move_item`, `request_clarification`.
+* **Role:** Classifies and routes new incoming work.
+* **Triggers:** `item_created` on Inbox/Backlog; `update_created` with issue intent.
+* **Tools:** `classify_item`, `find_best_assignee`, `move_item`, `request_clarification`, Magic `summarize_attachment`.
 * **Escalation/Safety Trigger:** If an item contains key terms indicating a system outage (`P0`, `P1`, `down`, `breach`, `crash`), it halts automation, labels the item, and bypasses regular boards to page the on-call engineer.
 
 #### 3.1.2 Sprint Agent (`agent_id: sprint`)
 * **Metaphor:** The Agile Project Manager.
-* **Role:** Monitors active sprint health. Identifies stale or blocked tasks, flags team capacity issues, notes member Out-of-Office (OOO) statuses, and suggests sprint rebalancing.
+* **Role:** Monitors active sprint health, capacity signals, and flags blocker alerts.
+* **Triggers:** `status_changed`, `member_ooo`, `sprint_start`/`sprint_end`, cron daily.
 * **Tools:** `compute_sprint_health`, `propose_rebalance`, `flag_blocker`, `draft_sprint_summary`.
 * **Escalation/Safety Trigger:** The agent can write descriptive comments and flag items on the active board, but is **strictly forbidden** from dragging items across sprint boundaries without a manager's explicit click.
 
 #### 3.1.3 Dev Liaison Agent (`agent_id: dev_liaison`)
 * **Metaphor:** The Tech Lead Bridge.
-* **Role:** Acts as the bridge between monday.com and developer-specific environments. Connects via Model Context Protocol (MCP) to GitHub/GitLab. It captures commits and pull requests, automatically links them to the correct board cards, syncs column statuses, and summarizes code changes.
+* **Role:** Acts as the bridge between monday.com and developer-specific environments. Connects via Model Context Protocol (MCP) to GitHub/GitLab.
+* **Triggers:** MCP `pull_request`, `workflow_run`; `item_assigned`.
 * **Tools:** `sync_pr_status`, `summarize_pr_diff`, `link_commit_to_item`, `detect_stale_branches`.
 * **Escalation/Safety Trigger:** Operates purely as a read-write board synchronizer; it has no tool access to merge code branches, push commits, or close repositories.
 
 #### 3.1.4 QA Gate Agent (`agent_id: qa_gate`)
 * **Metaphor:** The Rigorous QA Tester.
-* **Role:** Enforces deployment quality standards. When an item is moved to "Ready for QA," this agent checks external CI pipelines (GitHub Actions, CircleCI) to ensure automated test suites passed. It then evaluates the ticket's Acceptance Criteria against the actual pull request code diff.
+* **Role:** Enforces deployment quality standards. When an item is moved to "Ready for QA," this agent checks external CI pipelines.
+* **Triggers:** `status_changed` → `Ready for QA`; CI `test_suite_completed`.
 * **Tools:** `check_acceptance_criteria`, `query_test_results`, `block_item`, `approve_item`, `escalate_test_failures`.
 * **Escalation/Safety Trigger:** If the item contains high-risk tags (`security`, `auth`, `payments`, `PII`), it blocks autonomous sign-off and escalates the ticket to a human QA Lead.
 
 #### 3.1.5 Release Agent (`agent_id: release`)
 * **Metaphor:** The Release Manager.
-* **Role:** Compiles release-ready items. It drafts non-technical, human-friendly changelogs inside monday Docs (using Vibe capabilities) and prepares release announcements for stakeholders.
-* **Tools:** `check_release_readiness`, `generate_changelog`, `notify_stakeholders`, `archive_release`.
+* **Role:** Compiles release-ready items. It drafts non-technical, human-friendly changelogs.
+* **Triggers:** `release_date` T-3/T-1; manual `trigger_release`.
+* **Tools:** `check_release_readiness`, `generate_changelog` (Vibe Doc), `notify_stakeholders`, `archive_release`.
 * **Escalation/Safety Trigger:** The release notes and Slack alerts remain draft-only until a human Product Manager reviews and clicks the interactive "Approve and Release" button.
 
 ---
@@ -337,7 +400,7 @@ flowchart TD
 
 ---
 
-## 9. Evaluation Staging & Staged Deployment
+## 9. Evaluation Methodology & Staged Deployment
 
 To guarantee that agent behaviors are fully calibrated and safe, the team undergoes a rigorous, four-phase deployment pipeline.
 
@@ -352,25 +415,34 @@ flowchart LR
     P3 -.->|KPI Regression| H3[Rollback to Shadow]
 ```
 
-### 9.1 Phase 1: Offline Validation (Weeks 1–4)
-* **Goal:** Evaluate agents in isolation against historic team records.
-* **Corpus Construction:** Anonymize 6 months of historical board updates, PRs, and sprint shifts to construct a golden ground-truth evaluation set.
-* **Ground-Truth Rigor:** Three senior software leads independently rate agent actions on a 4-point scale: `[Correct, Acceptable, Suboptimal, Wrong]`. We target an inter-annotator agreement rating of **Cohen's $\kappa > 0.75$**.
-* **Model-as-a-Judge Calibration:** For qualitative outputs (e.g., Release Agent changelogs), we calibrate our evaluator LLM against 200 human-graded summaries, demanding a **Spearman Rank Correlation Coefficient ($\rho \ge 0.80$)**.
+### 9.1 Ground-Truth Construction (Offline Evaluation Corpus)
+To trust our evaluations, we build an extensive offline ground-truth corpus:
+1. **Historical Replay Construction:** Extract and anonymize 6 months of historical activity on enterprise workspaces. This compiles actual human action sequences per task (routing, sprint assignments, code links, status sync, and release approvals).
+2. **Ambiguous Label Resolution:** Three senior software leads independently review and label ambiguous items. They rate actions on a 4-point rubric: `[Correct, Acceptable, Suboptimal, Wrong]`. We target an inter-annotator agreement rating of **Cohen's $\kappa > 0.75$**.
+3. **Synthetic Injection Test Set:** A specialized, curated regression set of item updates embedded with complex prompt-injection scripts is constructed to measure action enum violation rates (target: $0$ escapes).
 
-### 9.2 Phase 2: Shadow Dry-Run (Weeks 5–10)
-* **Goal:** Evaluate the agents on live events without risking workspace contamination.
-* **Execution:** Agents capture active webhooks and process plans in the background. The proposed mutations are written to a shadow log database rather than executed via the monday API.
-* **Success Criteria:** Shadow execution must run for 30 consecutive days with **zero severity-0 triage misses** and an implied **escape rate of < 5%**.
+### 9.2 Per-Agent vs. Team-Level Evaluation
+We evaluate the system at two distinct structural layers to capture both isolated capability and emergent coordination failures:
 
-### 9.3 Phase 3: Canary Trial (Weeks 11–14)
-* **Goal:** Launch live execution to a small user base.
-* **Execution:** Turn on the *Triage* and *Dev Liaison* agents for **5% to 25%** of opt-in customer workspaces. All writes remain gated behind interactive **Preview Cards** in the monday UI.
-* **Fallback trigger:** If any metric regresses or a tenant hits API rate starvation, the workspace is automatically rolled back to Phase 2.
+| Evaluation Level | Target Subject | Method | Success Standard |
+|---|---|---|---|
+| **Per-Agent** | Isolated Agent Logic | Replaying golden corpus events through single agent graphs. | Achieve metric targets outlined in **Section 1.1** |
+| **Team-Level** | Multi-Agent Coordination | Simulating full sprint scenarios with multi-agent events in LangGraph. | - Maximize Cycle Time Reduction<br/>- Prevent action conflicts/circular hand-offs |
+| **Robustness** | Fault Isolation | Simulate agent degradation (e.g. disable MCP integration completely). | Rest of team degrades gracefully; logs error, does not loop |
 
-### 9.4 Phase 4: Full Online Autonomy (Weeks 15+)
-* **Goal:** Scale system to 100% of target workspaces.
-* **Execution:** Enable full autonomy. High-risk writes (external changelogs, payments/security QA sign-offs) remain gated behind human approvals. Low-risk updates (PR linking, status updates, capacity flags) write autonomously.
+### 9.3 LLM-as-a-Judge Calibration (Qualitative Metrics)
+Evaluating qualitative text outputs (like the *Release Agent's* release notes) requires an LLM-as-a-judge system running a separate, isolated model instance (Claude 3.5 Sonnet):
+* **Calibration Protocol:** Calibrate the judge model against a golden set of **200 human-rated changelogs** until achieving a **Spearman Rank Correlation Coefficient ($\rho \ge 0.80$)** against human grades.
+* **Production Drift Alerts:** The judge runs continuously on live summaries in production. If the running average of judge ratings slips by **$> 0.15$** from the calibration mean, it triggers a drift alert to our development team.
+
+### 9.4 Deployment Stages (Offline $\rightarrow$ Shadow $\rightarrow$ Canary $\rightarrow$ Online)
+
+| Phase | Duration | System Settings | Go / No-Go Gating Criteria |
+|---|---|---|---|
+| **Phase 1: Offline** | Weeks 1–4 | Evaluated inside CI workspace on replay corpus. Zero production access. | - Per-agent metrics exceed targets in §1.1.<br/>- 100% pass on synthetic prompt-injection sets. |
+| **Phase 2: Shadow** | Weeks 5–10 | Consumes live webhooks. Plans actions and dry-runs mutations to a shadow log. No writes to monday API. | - Zero severity-0 triage misses.<br/>- Calculated shadow escape rate is $< 5\%$ for 30 consecutive days. |
+| **Phase 3: Canary** | Weeks 11–14 | Live on **5% to 25%** of opt-in workspaces. All writes gated behind **interactive UI Preview Cards**. | - No KPI regressions on active workspaces.<br/>- Token bucket rate-shaping handles traffic spikes. |
+| **Phase 4: Online** | Weeks 15+ | 100% rollout. Low-risk writes run autonomously; high-risk writes remain gated. | - Maintain escape rate $< 3\%$ across entire fleet. |
 
 ---
 
