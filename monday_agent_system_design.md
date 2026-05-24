@@ -1,10 +1,6 @@
 # Workspace Agent Team — System Design
 ### Hybrid Human–Agent Collaboration on monday.com (Software Engineering Domain)
 
-**Audience:** Senior technical stakeholders (ML/GenAI, platform, product).  
-**Scope:** Design only — no POC. Target length: 5–7 pages.  
-**Time budget:** ~6 hours (calibrated extensions in §12).
-
 ---
 
 ## 0. Problem & Product Positioning
