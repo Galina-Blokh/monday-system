@@ -28,7 +28,7 @@ flowchart LR
   TODAY -.->|evolves to| NEXT
 ```
 
-**How to read the table below:** monday already ships several AI surfaces (left column). This design **does not rebuild them** — it **plugs into** them. The right column says what each existing surface does **for our five agents**, so we build on the platform instead of duplicating it.
+**The table below:** monday already ships several AI surfaces (left column). This design **does not rebuild them** — it **plugs into** them. The right column says what each existing surface does **for our five agents**, so we build on the platform instead of duplicating it.
 
 | Existing monday surface | What it is (today) | What it does in *this* design |
 |---|---|---|
