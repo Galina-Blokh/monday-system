@@ -7,7 +7,7 @@
 
 ### 0.1 The shift
 
-monday.com already ships **monday agents**, **Vibe**, **Sidekick**, **Magic**, and an **MCP** surface for external clients over workspace data. Those capabilities optimize for *"a user asks AI to do X."*
+monday.com already ships **monday agents**, **Vibe**, **Sidekick**, **Magic**, and **MCP** integrations for external tools (GitHub, CI, Slack, etc.). Those capabilities optimize for *"a user asks AI to do X."*
 
 This design targets the next layer: **a workspace as a shared environment where humans and specialized agents co-own work** — agents pick up items, coordinate via board state, and hand off to people at defined gates.
 
@@ -28,15 +28,26 @@ flowchart LR
   TODAY -.->|evolves to| NEXT
 ```
 
-**The table below:** monday already ships several AI surfaces (left column). This design **does not rebuild them** — it **plugs into** them. The right column says what each existing surface does **for our five agents**, so we build on the platform instead of duplicating it.
+**How to read the table below:** monday already has these products (left column). This design **reuses** them instead of building copies. The right column says how **our five agents** rely on each one.
 
-| Existing monday surface | What it is (today) | What it does in *this* design |
+| monday product | What it is (today) | Role in this design |
 |---|---|---|
 | **Sidekick** | Chat panel: user asks a question, AI answers | Stays for ad-hoc Q&A (“summarize this board”). **Separate** from the five agents, which run on **events** (new item, status change) without the user opening chat. |
 | **monday agents (builder)** | UI to define/configure agents on monday | **Where our five agents are registered** (Triage, Sprint, etc.) — configs, triggers, permissions live here. |
 | **Magic** | AI inside columns (summarize text, suggest formulas) | **Optional helper** our agents call for small tasks (e.g. summarize an attachment) when that’s cheaper than a full LLM call. |
 | **Vibe** | AI for writing/editing **Docs** | **Release Agent** uses it to draft the release changelog into a monday Doc instead of inventing a separate doc editor. |
-| **MCP** | Standard way to connect **external tools** to monday (GitHub, CI, Slack, …) | **Dev Liaison** and **QA Gate** talk to GitHub/CI through MCP adapters — we don’t build custom GitHub integrations from scratch. |
+| **MCP** | monday’s **plug-in layer** so AI and agents can read/write **outside** systems (GitHub, CI, Slack) through one standard interface | See **MCP example** below — used by **Dev Liaison** (PR/status) and **QA Gate** (test results). |
+
+**MCP example (why Dev Liaison & QA Gate need it):**
+
+Some facts agents need **do not live on monday** — they live in GitHub or your CI tool.
+
+| Need | Where the data lives | Without MCP | With MCP |
+|---|---|---|---|
+| Dev Liaison: “PR #42 is merged” | GitHub | Our team writes and maintains GitHub API code inside the agent service | Agent calls monday’s existing GitHub connection via MCP |
+| QA Gate: “tests passed, 85% coverage” | CI (e.g. GitHub Actions) | Same — custom CI integration per customer | Agent calls CI through monday’s MCP plug-in |
+
+**MCP** here means: *use monday’s supported connection to GitHub/CI*, not *our agents open github.com themselves with bespoke code*. Less integration work, same auth and permissions monday already manages for the workspace.
 
 ### 0.2 User pain & impact
 
@@ -656,7 +667,7 @@ flowchart LR
 | **Canary** | 11–14 | Triage + Dev Liaison live at 5%→25% workspaces | KPI regression → auto-rollback |
 | **Online** | 15+ | Sprint/QA/Release per tier; 100% fleet | 30d escape <3% for QA/Release autonomy |
 
-Shadow surfaces **would-have** previews to admins (opt-in) to train trust without risk.
+In shadow mode, **would-have** previews can be shown to admins (opt-in) to train trust without risk.
 
 ---
 
@@ -800,4 +811,4 @@ gantt
 
 ---
 
-*Document satisfies task.txt sections: team composition, pipeline diagram, per-agent design, context layering, HITL, evaluation (ground truth, rubric, calibration, offline→shadow→online), business KPIs, critical concerns, metric-first, failure criteria, ablations, action safety (preview/undo/audit/injection), production alerts, hybrid co-ownership, monday product surfaces, i18n/RTL, and getting work done.*
+*Document satisfies task.txt sections: team composition, pipeline diagram, per-agent design, context layering, HITL, evaluation (ground truth, rubric, calibration, offline→shadow→online), business KPIs, critical concerns, metric-first, failure criteria, ablations, action safety (preview/undo/audit/injection), production alerts, hybrid co-ownership, monday platform products, i18n/RTL, and getting work done.*
