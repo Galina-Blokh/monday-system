@@ -28,13 +28,15 @@ flowchart LR
   TODAY -.->|evolves to| NEXT
 ```
 
-| Surface | Role in this design |
-|---|---|
-| **Sidekick** | User-initiated Q&A; does not replace event-driven agents |
-| **monday agents (builder)** | Hosts agent definitions; our team registers the five agents below |
-| **Magic** | Field-level assist (summaries, formulas); agents call Magic skills where cheaper than raw LLM |
-| **Vibe** | Doc/knowledge authoring; Release Agent drafts changelogs into Docs via Vibe |
-| **MCP** | External tools (GitHub, CI, Slack) connect through MCP adapters; Dev Liaison and QA Gate consume them |
+**How to read the table below:** monday already ships several AI surfaces (left column). This design **does not rebuild them** — it **plugs into** them. The right column says what each existing surface does **for our five agents**, so we build on the platform instead of duplicating it.
+
+| Existing monday surface | What it is (today) | What it does in *this* design |
+|---|---|---|
+| **Sidekick** | Chat panel: user asks a question, AI answers | Stays for ad-hoc Q&A (“summarize this board”). **Separate** from the five agents, which run on **events** (new item, status change) without the user opening chat. |
+| **monday agents (builder)** | UI to define/configure agents on monday | **Where our five agents are registered** (Triage, Sprint, etc.) — configs, triggers, permissions live here. |
+| **Magic** | AI inside columns (summarize text, suggest formulas) | **Optional helper** our agents call for small tasks (e.g. summarize an attachment) when that’s cheaper than a full LLM call. |
+| **Vibe** | AI for writing/editing **Docs** | **Release Agent** uses it to draft the release changelog into a monday Doc instead of inventing a separate doc editor. |
+| **MCP** | Standard way to connect **external tools** to monday (GitHub, CI, Slack, …) | **Dev Liaison** and **QA Gate** talk to GitHub/CI through MCP adapters — we don’t build custom GitHub integrations from scratch. |
 
 ### 0.2 User pain & impact
 
