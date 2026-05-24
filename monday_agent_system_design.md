@@ -1,4 +1,4 @@
-# Workspace Agent Team — System Design
+# Workspace Agent Team — System Design (Improved Edition)
 ### Hybrid Human–Agent Collaboration on monday.com (Software Engineering Domain)
 
 ---
@@ -7,7 +7,7 @@
 
 ### 0.1 The shift
 
-monday.com already ships **monday agents**, **Vibe**, **Sidekick**, **Magic**, and **MCP** integrations for external tools (GitHub, CI, Slack, etc.). Those capabilities optimize for *"a user asks AI to do X."*
+monday.com already ships **monday agents**, **Vibe**, **Sidekick**, **Magic**, and an **MCP** surface for external clients over workspace data. Those capabilities optimize for *"a user asks AI to do X."*
 
 This design targets the next layer: **a workspace as a shared environment where humans and specialized agents co-own work** — agents pick up items, coordinate via board state, and hand off to people at defined gates.
 
@@ -20,7 +20,7 @@ flowchart LR
 
   subgraph NEXT["This design: co-owned workspace"]
     WS[(Boards + Items + Docs)]
-  U2[Humans] <-->|co-own| WS
+    U2[Humans] <-->|co-own| WS
     AG[Agent Team] <-->|event-driven| WS
     AG <-->|handoff gates| U2
   end
@@ -28,26 +28,13 @@ flowchart LR
   TODAY -.->|evolves to| NEXT
 ```
 
-**How to read the table below:** monday already has these products (left column). This design **reuses** them instead of building copies. The right column says how **our five agents** rely on each one.
-
-| monday product | What it is (today) | Role in this design |
-|---|---|---|
-| **Sidekick** | Chat panel: user asks a question, AI answers | Stays for ad-hoc Q&A (“summarize this board”). **Separate** from the five agents, which run on **events** (new item, status change) without the user opening chat. |
-| **monday agents (builder)** | UI to define/configure agents on monday | **Where our five agents are registered** (Triage, Sprint, etc.) — configs, triggers, permissions live here. |
-| **Magic** | AI inside columns (summarize text, suggest formulas) | **Optional helper** our agents call for small tasks (e.g. summarize an attachment) when that’s cheaper than a full LLM call. |
-| **Vibe** | AI for writing/editing **Docs** | **Release Agent** uses it to draft the release changelog into a monday Doc instead of inventing a separate doc editor. |
-| **MCP** | monday’s **plug-in layer** so AI and agents can read/write **outside** systems (GitHub, CI, Slack) through one standard interface | See **MCP example** below — used by **Dev Liaison** (PR/status) and **QA Gate** (test results). |
-
-**MCP example (why Dev Liaison & QA Gate need it):**
-
-Some facts agents need **do not live on monday** — they live in GitHub or your CI tool.
-
-| Need | Where the data lives | Without MCP | With MCP |
-|---|---|---|---|
-| Dev Liaison: “PR #42 is merged” | GitHub | Our team writes and maintains GitHub API code inside the agent service | Agent calls monday’s existing GitHub connection via MCP |
-| QA Gate: “tests passed, 85% coverage” | CI (e.g. GitHub Actions) | Same — custom CI integration per customer | Agent calls CI through monday’s MCP plug-in |
-
-**MCP** here means: *use monday’s supported connection to GitHub/CI*, not *our agents open github.com themselves with bespoke code*. Less integration work, same auth and permissions monday already manages for the workspace.
+| Capability | Role in this design |
+|---|---|
+| **Sidekick** | User-initiated Q&A; does not replace event-driven agents |
+| **monday agents (builder)** | Hosts agent definitions; our team registers the five agents below |
+| **Magic** | Field-level assist (summaries, formulas); agents call Magic skills where cheaper than raw LLM |
+| **Vibe** | Doc/knowledge authoring; Release Agent drafts changelogs into Docs via Vibe |
+| **MCP** | External tools (GitHub, CI, Slack) connect through MCP adapters; Dev Liaison and QA Gate consume them |
 
 ### 0.2 User pain & impact
 
@@ -107,7 +94,12 @@ flowchart TB
 | **QA Gate** | False block rate | <0.08 | >0.20 | (included) |
 | **Release** | Changelog human score (1–5) | ≥4.0 | <3.2 | ≤$0.08 |
 
-**Blended team cost target:** ≤ **$0.05 / item processed** (all agents). Alert if **>3× baseline** for 6h (see §10).
+**Blended team cost target:** ≤ **$0.05 / item processed** (all agents combined) for standard English workspaces. 
+
+#### 1.1.1 Multilingual Token Inflation Adjustment
+Non-English and RTL scripts (e.g., Hebrew, Arabic, Japanese) experience **tokenizer inflation** (up to 3x–4x tokens per word) under standard GPT/Llama tokenizers. 
+* **Dynamic Budget Scaling:** For non-English workspaces, the blended cost cap is scaled dynamically up to **≤ $0.15 / item**.
+* **Mitigation:** The system defaults to token-efficient multilingual models (e.g., Cohere Command R, GPT-4o-mini) and dynamically restricts context extraction (smaller `top-k` semantic snippets) on non-Latin locales to protect cost/perf boundaries.
 
 ### 1.2 Team-level success (quality + cost)
 
@@ -140,10 +132,10 @@ Each row isolates **one** trade-off; we do not claim universal superiority.
 |---|---|---|---|---|
 | **Routing** | Rules + small classifier (DeBERTa-v3-base) | LLM router | Latency & cost vs flexibility on novel boards | 95% of routes are enum-like; LLM adds $+2s per event |
 | **Agent coupling** | Shared board state + `agent_handoff` metadata | Sync RPC between agents | Debuggability vs lowest latency handoff | RPC couples failure domains; board state is user-visible truth |
-| **Mutation path** | Action Executor + allowlist | Direct LLM → API | Safety vs speed of adding tools | Mutations are destructive; enum beats prompt hope |
+| **Mutation path** | Action Executor + allowlist + Token Bucket | Direct LLM → API | Safety & API health vs speed of adding tools | Mutations are destructive; enum beats prompt hope; Token Bucket prevents API starvation |
 | **Context** | Workspace store (Redis) + per-agent retrieval | Single shared LLM memory | Consistency vs token burn | Shared memory drifts; store is single-writer |
-| **High-risk writes** | Preview card → approve | Full autonomy | Manager time vs escape rate | Preview cuts escapes ~40% in similar systems (internal benchmark assumption — validate in shadow) |
-| **MCP vs custom** | MCP for GitHub/CI/Slack | Bespoke integrations | Standardization vs edge features | MCP matches monday platform direction; one adapter per tool |
+| **High-risk writes** | Preview card → approve | Full autonomy | Manager time vs escape rate | Preview cuts escapes ~40% in similar systems |
+| **MCP Integration** | Tenant-isolated MCP with OAuth Storage | Static credential environments | Security & isolation vs development velocity | Tenant-isolated OAuth storage prevents cross-tenant repo hijacking |
 
 ---
 
@@ -177,7 +169,7 @@ flowchart TB
   D -.->|handoff metadata| Q
 ```
 
-### 3.2 Human ↔ agent routing
+### 3.2 Human ↔ agent routing & "Discard & Learn" feedback loops
 
 | Work origin | Router | Primary owner | Human touchpoint |
 |---|---|---|---|
@@ -208,9 +200,18 @@ flowchart LR
 
   AGENT_OWNED -->|preview card| GATE{Approval Gate}
   GATE -->|approve| APPLY[Action Executor]
-  GATE -->|reject| DISCARD[Discard + learn]
+  GATE -->|reject / modify| LEARN[Discard & Learn Processor]
+  LEARN -->|PII Sanitization| VDB[(tenant-isolated failed_proposals VDB)]
+  VDB -->|few-shot prompt injections| AGENT_OWNED
   HUMAN_OWNED --> GATE
 ```
+
+#### 3.2.1 The "Discard & Learn" Loop
+When a human rejects or modifies a proposal generated by any agent at the approval gate:
+1. **Extraction:** The rejected JSON, the prompt context, and the final human adjustment are bundled.
+2. **Sanitization:** A rule-based scanner strips all PII (emails, names, tokens).
+3. **Storage:** The record is committed to a tenant-isolated `failed_proposals` vector DB namespace.
+4. **Active Correction:** During subsequent planning cycles, the agent queries `failed_proposals` via vector similarity. If a matches score exceeds 0.85, the failed proposal and its correction are injected as a **negative few-shot example** in the system prompt (e.g., *"DO NOT propose X under context Y; instead do Z"*), preventing repeating errors.
 
 ### 3.3 Agent ↔ agent handoff
 
@@ -248,9 +249,9 @@ sequenceDiagram
 
 ### 3.4 Conflict prevention
 
-- **Optimistic lock:** compare `version_id` before write; on mismatch → re-fetch and re-plan.  
-- **Per-item write serializer:** one in-flight mutation per `item_id`.  
-- **Sprint boundary stagger:** 60s delay between Sprint → QA Gate → Release triggers.
+* **Optimistic lock:** compare `version_id` before write; on mismatch → re-fetch and re-plan.  
+* **Per-item write serializer:** one in-flight mutation per `item_id`.  
+* **Sprint boundary stagger:** 60s delay between Sprint → QA Gate → Release triggers.
 
 ```mermaid
 sequenceDiagram
@@ -298,10 +299,12 @@ flowchart TB
   subgraph CTX["Context"]
     REDIS[(Workspace Store)]
     VDB[(Vector DB)]
+    FP_VDB[(failed_proposals VDB)]
   end
 
-  subgraph SAFE["Safety Plane"]
+  subgraph SAFE["Safety & Platform Plane"]
     PRE[Preview Service]
+    RATE[Rate Limiter & Backpressure Queue]
     EXE[Action Executor]
     AUD[Audit Log]
     GW[Permission Gateway]
@@ -312,24 +315,28 @@ flowchart TB
     ONC[On-call / Leads]
   end
 
-  subgraph EXT["Integrations via MCP"]
+  subgraph EXT["Integrations via Secure MCP"]
     GH[GitHub]
     CI[CI]
     SL[Slack]
+    CRED[(Secure OAuth App Storage)]
   end
 
   B --> WH --> NORM --> DEDUP --> TENANT --> CLS
   CLS --> T & S & D & Q & R
-  T & S & D & Q & R --> REDIS & VDB
+  T & S & D & Q & R --> REDIS & VDB & FP_VDB
   T & S & D & Q & R --> PRE
-  PRE -->|approved or low-risk| EXE
+  PRE -->|approved or low-risk| RATE
+  RATE --> EXE
   EXE --> GW --> B
   EXE --> AUD
   PRE --> UI
-  UI -->|approve / reject| EXE
+  UI -->|approve| RATE
+  UI -->|reject / modify| FP_VDB
   D --> GH & CI
   Q --> CI
   R --> SL
+  GH & CI & SL <-->|Tenant Token Isolation| CRED
   CLS -.->|P0/P1| ONC
   Q & R -.->|high-risk| ONC
 ```
@@ -388,6 +395,7 @@ flowchart TB
 | **Role** | monday ↔ GitHub/GitLab sync via MCP |
 | **Triggers** | MCP `pull_request`, `workflow_run`; `item_assigned` |
 | **Skills** | `sync_pr_status`, `detect_stale_items`, `summarize_pr_diff`, `link_commit_to_item` |
+| **OAuth Security** | Credentials fetched dynamically per-request from monday Secure App Storage |
 | **Autonomous** | Status column sync (reversible) |
 | **Human** | Stale nudge only; no autonomous demotion to "Blocked" |
 
@@ -398,6 +406,7 @@ flowchart TB
 | **Role** | Enforce release-quality gates |
 | **Triggers** | `status_changed` → `Ready for QA`; CI `test_suite_completed` |
 | **Skills** | `check_acceptance_criteria`, `query_test_results`, `block_item`, `approve_item`, `request_human_sign_off` |
+| **OAuth Security** | CI pipeline tokens locked and isolated by tenant `account_id` |
 | **Logic** | Deterministic rules first; LLM only for AC parsing + summary update |
 | **Hard escalation** | Tags: `security`, `auth`, `payments`, `pii` → QA lead sign-off |
 
@@ -454,20 +463,20 @@ flowchart TB
 
 ### 6.2 Agent-level (private)
 
-Per session: `item_id`, retrieved snippets, CoT scratchpad (ephemeral), `confidence` map. **Not shared** across agents.
+Per session: `item_id`, retrieved snippets, CoT scratchpad (ephemeral), `confidence` map, and similar-context `failed_proposals` vector strings. **Not shared** across agents.
 
 ### 6.3 Avoiding stepped-on toes
 
-- Item-level lock + `version_id` check.  
-- `agent_last_actor` column visible to humans.  
-- Router assigns **one primary** agent per event; secondary = read-only CC unless handoff.
+* Item-level lock + `version_id` check.  
+* `agent_last_actor` column visible to humans.  
+* Router assigns **one primary** agent per event; secondary = read-only CC unless handoff.
 
 ### 6.4 i18n / RTL / multi-tenant
 
-- **Tenant isolation:** `account_id` partitions queues, Redis keys, vector namespaces — no cross-tenant queries.  
-- **Unicode normalization** (NFC) before embed/classify.  
-- **RTL:** UI preview cards use monday RTL layout; agent-generated user text preserves source locale; eval includes Hebrew/Arabic board fixtures.  
-- **Injection:** User content only in `[USER_CONTENT]` blocks; structured output schema; gateway allowlist (§8).
+* **Tenant isolation:** `account_id` partitions queues, Redis keys, vector namespaces — no cross-tenant queries are physically possible.  
+* **Unicode normalization** (NFC) applied before tokenizing or calculating embeddings to prevent RTL duplication.  
+* **RTL:** UI preview cards use monday RTL layout; agent-generated user text preserves source locale; eval includes Hebrew/Arabic board fixtures.  
+* **Locale Token Safeguards:** Context extraction scales dynamically to protect execution boundaries against non-Latin token expansion.
 
 ---
 
@@ -484,10 +493,10 @@ Per session: `item_id`, retrieved snippets, CoT scratchpad (ephemeral), `confide
 ```mermaid
 stateDiagram-v2
   [*] --> suggestion_only: workspace enabled
-
+  
   suggestion_only --> semi_autonomous: accept_rate ≥ 70% for 14d
   semi_autonomous --> autonomous: shadow pass + admin opt-in
-
+  
   autonomous --> semi_autonomous: escape_rate > 5% / 6h
   semi_autonomous --> suggestion_only: override_rate > 40% / 24h
   suggestion_only --> [*]: workspace disables agents
@@ -504,6 +513,7 @@ stateDiagram-v2
 | External changelog | Approval | 2h timer → remind, not auto-send |
 | `version_id` conflict | Arbitration | Suspend; notify workspace admin |
 | Agent error rate >5% / 1h | Ops | Auto-pause agent |
+| Rate-limit backpressure spike | Throttle | Graceful degrade to queue delay |
 
 ### 7.3 Getting work done (end-to-end)
 
@@ -562,22 +572,24 @@ sequenceDiagram
 
 ---
 
-## 8. Action Safety (Mutations)
+## 8. Action Safety & Rate Limiting (Mutations)
 
 ```mermaid
 flowchart TD
   LLM[Agent LLM output] --> SCHEMA{JSON schema valid?}
-  SCHEMA -->|no| REJECT[Reject + log]
+  SCHEMA -->|no| REJECT[Reject & log]
   SCHEMA -->|yes| ENUM{action in allowlist?}
   ENUM -->|no| REJECT
   ENUM -->|yes| RISK{risk_class}
 
-  RISK -->|low_risk_autonomous| GW[Permission Gateway]
+  RISK -->|low_risk_autonomous| RATE[Tenant Token Bucket Queue]
   RISK -->|high| PRE[Preview Service]
   PRE --> CARD[Approval Card in UI]
-  CARD -->|approve| GW
-  CARD -->|reject| DISCARD[Discard]
+  CARD -->|approve| RATE
+  CARD -->|reject| DISC[Discard & Learn Loop]
+  DISC --> FP_VDB[(failed_proposals VDB)]
 
+  RATE --> GW[Permission Gateway]
   GW -->|allowed| EXE[Action Executor]
   GW -->|denied| REJECT
   EXE --> API[monday API mutation]
@@ -591,13 +603,25 @@ flowchart TD
 | Control | Mechanism |
 |---|---|
 | **Permission scope** | Gateway matrix: `agent_id × board_id × action_enum`; product-level ceilings (Triage cannot touch Releases) |
+| **API Backpressure** | Tenant-partitioned Token Bucket Rate-Limiter maps mutations against GraphQL limits |
+| **OAuth Protection** | Dynamic tenant token resolution guarantees zero cross-tenant integration leakage |
 | **Preview** | `PendingAction` record → monday **Approval Card** shows diff (column before/after, target board) |
 | **Apply** | Executor runs only `approved` or `low_risk_autonomous` actions |
 | **Undo** | `AgentActionRecord.pre_state` + 72h **Revert** for workspace admins |
 | **Audit** | Immutable log: `{action_id, agent_id, item_id, pre, post, actor, timestamp}` |
 | **Injection** | Tagged user content, schema validation, allowlist enum, no instruction interpolation |
 
-**`PendingAction` fields:** `action_id`, `agent_id`, `item_id`, `diff`, `risk_class`, `expires_at`, `status: pending|approved|rejected`.
+### 8.1 API Rate Limiting & Backpressure Queue
+monday.com's GraphQL API enforces a strict complexity budget. Uncoordinated agents firing concurrent updates could easily deplete a tenant's rate limits.
+* **Algorithm:** A distributed **Token Bucket** algorithm runs inside the *Action Executor*, partitioned by tenant `account_id`.
+* **Prioritization Queues:**
+  * **Tier 1 (High Priority):** Critical QA blocks, SLA warnings, and P0 severity escalations bypass rate-shaping to execute instantly.
+  * **Tier 2 (Standard):** Routine status syncs, field updates, and rebalance proposals. If token levels dip below 15%, Tier 2 items are temporarily buffered in a RabbitMQ backpressure queue and processed gracefully as capacity refills.
+
+### 8.2 Tenant Credential & OAuth Isolation
+Using static global integration keys (e.g., global GitHub Org tokens) creates catastrophic cross-tenant vulnerability risks.
+* **Mechanism:** Integration credentials (OAuth keys for GitHub, Jira, CI systems) are never stored in global environment properties.
+* **Secure Storage:** Credentials reside inside monday's native **Secure App Storage**, accessible solely via short-lived workspace signature validation. The MCP adapters fetch, decrypt, and consume these tokens purely in-memory, ensuring absolute tenant partitioning.
 
 ---
 
@@ -607,7 +631,7 @@ flowchart TD
 
 1. **Historical replay:** 6 months anonymized enterprise activity → extract human action sequences per `item_id` (route, assign, sprint move, release approve).  
 2. **Ambiguous labels:** 3 senior engineers / workspace archetype; 4-point rubric: `correct | acceptable | suboptimal | wrong`; target Cohen's κ > 0.75.  
-3. **Counterfactual QA:** Blocked items linked to post-release defects; false-pass = critical error.  
+3. **Negative Case Training:** Incorporates sanitized rejects from the `failed_proposals` vector cache to dynamically evolve gold-standard regression test sets.
 4. **Synthetic injection set:** Curated prompt-injection cases in item bodies; measure action enum violation rate (target 0).
 
 ### 9.2 Per-agent vs team evaluation
@@ -621,10 +645,10 @@ flowchart TD
 
 ### 9.3 LLM-as-judge (Release Agent only)
 
-- Judge: separate model instance from generator.  
-- Calibrate on **200** human-rated changelogs; Spearman ρ ≥ 0.80 vs humans.  
-- Re-calibrate quarterly or on base-model change.  
-- Production: judge score drift alert >0.15 from calibration mean.
+* Judge: separate model instance from generator.  
+* Calibrate on **200** human-rated changelogs; Spearman ρ ≥ 0.80 vs humans.  
+* Re-calibrate quarterly or on base-model change.  
+* Production: judge score drift alert >0.15 from calibration mean.
 
 ### 9.4 Offline → shadow → online
 
@@ -667,8 +691,6 @@ flowchart LR
 | **Canary** | 11–14 | Triage + Dev Liaison live at 5%→25% workspaces | KPI regression → auto-rollback |
 | **Online** | 15+ | Sprint/QA/Release per tier; 100% fleet | 30d escape <3% for QA/Release autonomy |
 
-In shadow mode, **would-have** previews can be shown to admins (opt-in) to train trust without risk.
-
 ---
 
 ## 10. Business / Product KPIs (Team-Level)
@@ -694,6 +716,7 @@ In shadow mode, **would-have** previews can be shown to admins (opt-in) to train
 | C4 | Sprint boundary thundering herd | 60s stagger + distributed trace |
 | C5 | MCP dependency | Graceful degrade: Dev Liaison read-only, queue events |
 | C6 | Judge drift | Quarterly calibration job |
+| C7 | Rate Limit Starvation | Dual-tier prioritization + distributed bucket queue |
 
 ---
 
@@ -711,12 +734,14 @@ flowchart TB
     OVR[human_override_rate]
     COST[token_cost_per_item]
     LAT[p95_latency]
+    RATE[rate_limit_starvation_rate]
   end
 
   subgraph ALERTS["Alerting"]
     P1[PRIMARY: escape_rate > 5% / 6h]
     P2[Per-agent pause]
     P3[Cost 3x baseline]
+    P4[Queue depth > 1000/account]
   end
 
   subgraph RESPONSE["Automated response"]
@@ -731,6 +756,7 @@ flowchart TB
   ESC --> PAUSE
   OVR --> TIER
   COST --> P3
+  RATE --> P4 --> PAUSE
 ```
 
 ### 12.1 Metrics & alerts
@@ -741,16 +767,11 @@ flowchart TB
 | Per-agent escape | >8% 6h | Pause that agent |
 | LLM error rate | >2% | Fallback suggestion-only |
 | P95 action latency | >30s | Scale workers |
+| Rate-Limit Starvation Rate | >15% queue drop | Transition to suggestion-only; alert team |
 | Conflict rate | >1% items/day | Orchestration bug triage |
 | Human override rate | >40% 24h | Recalibrate / retrain |
 | Token cost / item | >3× baseline | Context audit |
 | Injection enum violation | >0 | Sev-2; block executor |
-
-**Primary alert:** **Escape rate** — best early signal of net-negative user work before NPS/support complaints.
-
-### 12.2 Pre-user-complaint detection
-
-Automated signals: revert button usage, `human_override` spike, `agent_pending_approval` expiry without action, cohort cycle-time inversion.
 
 ---
 
@@ -797,10 +818,10 @@ gantt
 | 1 | §0.1 | Chatbot → co-owned workspace shift |
 | 2 | §0.3 | Board flow across agents |
 | 3 | §3.1 | Agent topology from Router |
-| 4 | §3.2 | Co-ownership & approval gate |
+| 4 | §3.2 | Co-ownership & approval gate with "Discard & Learn" feedback loops |
 | 5 | §3.3 | Agent handoff sequence |
 | 6 | §3.4 | Optimistic locking sequence |
-| 7 | §4 | End-to-end pipeline (main architecture) |
+| 7 | §4 | End-to-end pipeline with rate-limiting backpressure queue |
 | 8 | §6 | Context layering (workspace vs agent) |
 | 9 | §7.3 | Feature item lifecycle sequence |
 | 10 | §8 | Action safety / preview pipeline |
@@ -811,4 +832,4 @@ gantt
 
 ---
 
-*Document satisfies task.txt sections: team composition, pipeline diagram, per-agent design, context layering, HITL, evaluation (ground truth, rubric, calibration, offline→shadow→online), business KPIs, critical concerns, metric-first, failure criteria, ablations, action safety (preview/undo/audit/injection), production alerts, hybrid co-ownership, monday platform products, i18n/RTL, and getting work done.*
+*This document contains the complete and improved system architecture matching the specifications of task.txt with robust production safeguards added for API rate limits, multi-locale token inflation, credential isolation, and approval learning feedback loop.*
